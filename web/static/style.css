@@ -143,6 +143,9 @@ main { max-width: 980px; margin: 0 auto; padding: 28px 16px 56px; }
 .btn-primary:active  { transform: scale(.97); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 .btn-sm-btn { font-size: .875rem; padding: 9px 20px; }
+.btn-guardar { background: var(--surface2); color: var(--text); }
+.btn-guardar:hover { background: #16a34a; color: #fff; }
+.btn-guardada { background: #16a34a; opacity: .7 !important; cursor: default !important; }
 
 .btn-sm {
   border: none;
@@ -379,6 +382,7 @@ main { max-width: 980px; margin: 0 auto; padding: 28px 16px 56px; }
 
 /* ─── Empresa body ───────────────────────────────────────────── */
 .empresa-body { padding: 20px 24px; }
+.email-placeholder { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .idea-box {
   background: linear-gradient(135deg, rgba(249,115,22,.06), rgba(249,115,22,.02));

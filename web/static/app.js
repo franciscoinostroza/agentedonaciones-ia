@@ -168,9 +168,51 @@ function cardHTML(e, tipo, index) {
     '<div class="empresa-body" id="body-' + tipo + '-' + index + '">',
       '<div class="email-placeholder">',
         '<button class="btn-primary btn-sm-btn" onclick="generarEmailCard(\'' + tipo + '\', ' + index + ')">Generar email</button>',
+        tipo === 'r' ? '<button class="btn-primary btn-sm-btn btn-guardar" onclick="guardarEmpresa(' + index + ', this)">Guardar empresa</button>' : '',
       '</div>',
     '</div>',
   ].join('');
+}
+
+/* ─── Guardar empresa ────────────────────────────────────────── */
+async function guardarEmpresa(index, btn) {
+  const empresa = _resultados[index];
+  if (!empresa) return;
+
+  const data = {
+    nicho: _necesidad,
+    zona: _zona,
+    nombre: empresa.nombre,
+    sitio_web: empresa.sitio_web || '',
+    email: empresa.email || '',
+    tiene_rse: empresa.tiene_rse ? 1 : 0,
+    direccion: empresa.direccion || '',
+    telefono: empresa.telefono || '',
+    contacto_nombre: '',
+    fuente: empresa.fuente || '',
+    categoria: empresa.categoria || '',
+    tipo_donacion: empresa.donan || '',
+    notas: empresa.notas || '',
+    match_score: empresa.match_score || 0,
+  };
+
+  try {
+    const res = await fetch('/api/empresas-guardadas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (res.ok) {
+      empresa.guardadaId = result.id;
+      btn.textContent = 'Guardada';
+      btn.disabled = true;
+      btn.classList.add('btn-guardada');
+    }
+  } catch (err) {
+    btn.textContent = 'Error, reintentar';
+    setTimeout(() => { btn.textContent = 'Guardar empresa'; }, 2000);
+  }
 }
 
 /* ─── Generar email on demand ───────────────────────────────── */

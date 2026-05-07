@@ -171,10 +171,15 @@ Devolvé ÚNICAMENTE JSON:
 
 # ─── EMPRESAS GUARDADAS ────────────────────────────────────────
 
-@app.route("/api/empresas-guardadas", methods=["GET"])
+@app.route("/api/empresas-guardadas", methods=["GET", "POST"])
 def empresas_guardadas():
-    nicho = request.args.get("nicho")
-    return jsonify(db.get_empresas_guardadas(nicho))
+    if request.method == "GET":
+        nicho = request.args.get("nicho")
+        return jsonify(db.get_empresas_guardadas(nicho))
+    if request.method == "POST":
+        data = request.get_json()
+        rid = db.add_empresa_guardada(data)
+        return jsonify({"id": rid})
 
 
 @app.route("/api/empresas-guardadas/<int:id>", methods=["DELETE"])

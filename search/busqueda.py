@@ -13,7 +13,7 @@ CATEGORIAS = {
 }
 
 
-def buscar_empresas_local(categoria=None, rubro=None, keyword=None, provincia=None):
+def buscar_empresas_local(categoria=None, rubro=None, keywords=None, provincia=None):
     resultados = []
     for emp in EMPRESAS:
         if categoria and emp["categoria"] != categoria:
@@ -22,9 +22,7 @@ def buscar_empresas_local(categoria=None, rubro=None, keyword=None, provincia=No
             continue
         if provincia and provincia.lower() not in emp["provincia"].lower():
             continue
-        if keyword:
-            kw = keyword.lower()
-            # Expandir keyword a sinonimos
+        if keywords:
             sinonimos = {
                 "mueble": ["mueble", "mobiliario", "silla", "mesa", "muebles_banio", "estanteria"],
                 "muebles": ["mueble", "mobiliario", "silla", "mesa", "muebles_banio", "estanteria"],
@@ -35,16 +33,31 @@ def buscar_empresas_local(categoria=None, rubro=None, keyword=None, provincia=No
                 "banio": ["baño", "sanitario", "inodoro", "lavatorio", "banio"],
                 "sanitario": ["baño", "sanitario", "inodoro", "lavatorio"],
                 "libro": ["libro", "cuaderno", "utiles", "escolar", "biblioteca", "lectura"],
+                "alimento": ["alimento", "comida", "leche", "fideo", "arroz", "aceite", "lacteo", "bebida"],
+                "alimentos": ["alimento", "comida", "leche", "fideo", "arroz", "aceite", "lacteo", "bebida"],
+                "comida": ["alimento", "comida", "leche", "fideo", "arroz", "aceite", "lacteo", "bebida"],
+                "leche": ["alimento", "leche", "lacteo", "yogur"],
+                "lacteo": ["alimento", "leche", "lacteo", "yogur"],
+                "lacteos": ["alimento", "leche", "lacteo", "yogur"],
+                "libros": ["libro", "cuaderno", "utiles", "escolar", "biblioteca", "lectura"],
+                "utiles": ["libro", "cuaderno", "utiles", "escolar", "lapiz", "lapicera", "mochila"],
+                "escolar": ["libro", "cuaderno", "utiles", "escolar", "lapiz", "lapicera", "mochila"],
+                "material": ["material", "materiales", "construccion", "cemento", "obra"],
+                "materiales": ["material", "materiales", "construccion", "cemento", "obra"],
             }
-            kws = sinonimos.get(kw, [kw])
 
             match = False
-            for skw in kws:
-                if (skw in emp["nombre"].lower()
-                    or skw in emp["rubro"].lower()
-                    or skw in emp.get("notas", "").lower()
-                    or any(skw in td.lower() for td in emp.get("tipo_donacion", []))):
-                    match = True
+            for kw in keywords:
+                kw = kw.lower()
+                kws = sinonimos.get(kw, [kw])
+                for skw in kws:
+                    if (skw in emp["nombre"].lower()
+                        or skw in emp["rubro"].lower()
+                        or skw in emp.get("notas", "").lower()
+                        or any(skw in td.lower() for td in emp.get("tipo_donacion", []))):
+                        match = True
+                        break
+                if match:
                     break
             if not match:
                 continue
@@ -126,29 +139,30 @@ def buscar_empresas_por_necesidad(necesidad):
         "voluntario", "voluntariado",
     }
 
+    # Palabras vacías (stop words) que no aportan a la búsqueda
+    stopwords = {"de", "el", "la", "los", "las", "un", "una", "para", "en", "con", "del", "al", "por", "y", "o", "a", "que", "es", "se", "no", "su", "mi", "tu"}
+    keywords_busqueda = [p for p in necesidad.split() if p.lower() not in stopwords]
+
     categoria_detectada = None
     for palabra, cat in mapeo.items():
         if palabra in necesidad:
             categoria_detectada = cat
             break
 
-    # Detectar palabras multi-categoria
     usa_multi = any(p in necesidad for p in mapeo_multi)
 
     if categoria_detectada and not usa_multi:
-        return buscar_empresas_local(categoria=categoria_detectada, keyword=necesidad.split()[0])
+        return buscar_empresas_local(categoria=categoria_detectada, keywords=keywords_busqueda)
     elif categoria_detectada and usa_multi:
-        # Buscar en la categoria detectada + todas las demas
-        resultados_cat = buscar_empresas_local(categoria=categoria_detectada, keyword=necesidad.split()[0])
-        resultados_multi = buscar_empresas_local(keyword=necesidad.split()[0])
-        # Combinar sin duplicados
+        resultados_cat = buscar_empresas_local(categoria=categoria_detectada, keywords=keywords_busqueda)
+        resultados_multi = buscar_empresas_local(keywords=keywords_busqueda)
         visto = {r["nombre"] for r in resultados_cat}
         for r in resultados_multi:
             if r["nombre"] not in visto:
                 resultados_cat.append(r)
         return resultados_cat
     else:
-        return buscar_empresas_local(keyword=necesidad.split()[0])
+        return buscar_empresas_local(keywords=keywords_busqueda)
 
 
 def buscar_empresas_web(query, provincia=None):
