@@ -63,7 +63,7 @@ def buscar_ia():
 
     try:
         from search.ia_busqueda import buscar_empresas_con_ia
-        resultado = buscar_empresas_con_ia(necesidad, max_resultados=6)
+        resultado = buscar_empresas_con_ia(necesidad, max_resultados=12)
         empresas = resultado.get("empresas", []) if "error" not in resultado else []
 
         formato = []

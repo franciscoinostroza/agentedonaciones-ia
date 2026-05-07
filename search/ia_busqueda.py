@@ -25,16 +25,20 @@ def _safe(text):
 def generar_consultas_ia(necesidad):
     prompt = f"""Un merendero argentino (IEA) necesita: {necesidad}
 
-Genera exactamente 5 consultas de busqueda en Google/DuckDuckGo para encontrar empresas
-argentinas que puedan DONAR estos recursos. Las consultas deben ser diversas y efectivas.
+Genera exactamente 6 consultas de busqueda web para encontrar EMPRESAS ESPECIFICAS
+argentinas que puedan DONAR estos recursos. Cada consulta debe nombrar rubros o tipos
+de empresa concretos. Ejemplos de buen formato:
+- "fundacion ARCOR donacion alimentos comedores"
+- "empresas lacteas donan leche merenderos Argentina"
+- "Techint RSE donacion materiales construccion"
 
 Responde SOLO en JSON:
-{{"consultas": ["consulta1", "consulta2", "consulta3", "consulta4", "consulta5"]}}"""
+{{"consultas": ["consulta1", "consulta2", "consulta3", "consulta4", "consulta5", "consulta6"]}}"""
 
     resp = chat([
-        {"role": "system", "content": "Genera consultas de busqueda web. Solo JSON."},
+        {"role": "system", "content": "Sos experto en fundraising argentino. Genera consultas web especificas que nombren rubros y tipos de empresa concretos. Solo JSON."},
         {"role": "user", "content": prompt}
-    ], temperature=0.3, max_tokens=500)
+    ], temperature=0.5, max_tokens=800)
 
     try:
         data = json.loads(resp)
@@ -44,17 +48,17 @@ Responde SOLO en JSON:
     except:
         pass
 
-    # Fallback queries well-formed
     return [
-        f"empresas donan {necesidad} Argentina RSE",
-        f"programa donaciones {necesidad} fundaciones Argentina",
-        f"{necesidad} donaciones empresas comedores Argentina",
-        f"responsabilidad social donacion {necesidad} Argentina",
-        f"empresas solidarias {necesidad} merenderos",
+        f"empresas {necesidad} donan fundaciones Argentina",
+        f"programa donaciones {necesidad} empresas argentinas",
+        f"fabrica {necesidad} responsabilidad social Argentina",
+        f"empresa {necesidad} donacion comedores merenderos",
+        f"industria {necesidad} RSE Argentina donaciones",
+        f"{necesidad} donacion organizaciones sociales Argentina",
     ]
 
 
-def buscar_web_ddg(consulta, max_results=8):
+def buscar_web_ddg(consulta, max_results=6):
     resultados = []
     try:
         with DDGS() as ddgs:
@@ -91,35 +95,36 @@ def analizar_con_ia(texto_pagina, necesidad_original, titulo="", url=""):
     if not texto_pagina:
         return None
 
-    prompt = f"""Analizá esta página web de una posible empresa donante en Argentina.
+    prompt = f"""Analizá esta pagina web en busca de empresas argentinas que puedan donar.
 
 NECESIDAD: {necesidad_original}
 
-TÍTULO DE LA PÁGINA: {titulo}
+TITULO: {titulo}
 URL: {url}
 
 CONTENIDO:
-{texto_pagina[:3500]}
+{texto_pagina[:4000]}
 
-Determiná si esta empresa/página realmente ofrece donaciones, responsabilidad social empresaria
-o apoyo a organizaciones sociales. Si NO es una empresa que done, respondé exactamente: NO_DONA
+Si esta pagina MENCIONA empresas concretas que donan o tienen programas de RSE,
+extrae los datos de CADA empresa (maximo 3). Si no hay ninguna empresa concreta
+con programa de donaciones, respondé exactamente: NO_DONA
 
-Si SÍ dona o apoya, respondé SOLO en JSON:
-{{
+Respondé SOLO en JSON como array de empresas:
+[{{
     "nombre_empresa": "Nombre real de la empresa",
     "rubro": "Rubro principal",
     "categoria": "construccion|tecnologia|educacion|alimentacion|general",
-    "contacto": "email o metodo de contacto",
+    "contacto": "email de contacto si aparece",
     "telefono": "telefono si aparece",
-    "web": "{url}",
+    "web": "sitio web de la empresa",
     "provincia": "Provincia o Nacional",
     "tipo_donacion": ["tipo1", "tipo2"],
-    "notas": "resumen de 2-3 lineas sobre su programa de donaciones",
-    "match_score": numero del 1 al 100 que indique que tan bien se ajusta a la necesidad
-}}"""
+    "notas": "resumen de que donan y como contactar (2 lineas)",
+    "match_score": numero 1-100 que tan bien se ajusta a la necesidad
+}}]"""
 
     resp = chat([
-        {"role": "system", "content": "Sos un analista de RSE. Determiná si una empresa dona y extraé datos estructurados. Respondé SOLO con JSON o NO_DONA."},
+        {"role": "system", "content": "Sos analista de RSE. Extrae empresas que donan de cualquier pagina. Si la pagina menciona empresas concretas con programas de donacion, extraelas. Solo JSON array o NO_DONA."},
         {"role": "user", "content": prompt}
     ], temperature=0.2, max_tokens=3000)
 
@@ -127,9 +132,13 @@ Si SÍ dona o apoya, respondé SOLO en JSON:
         return None
 
     try:
-        json_match = re.search(r'\{.*\}', resp, re.DOTALL)
+        json_match = re.search(r'\[.*\]', resp, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            data = json.loads(json_match.group())
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+            elif isinstance(data, dict):
+                return data
     except:
         pass
     return None
@@ -149,7 +158,7 @@ def buscar_empresas_con_ia(necesidad, max_resultados=8):
 
     for i, consulta in enumerate(consultas):
         print(_safe(f"  Buscando en web [{i+1}/{len(consultas)}]: {consulta[:70]}..."))
-        resultados_web = buscar_web_ddg(consulta, max_results=4)
+        resultados_web = buscar_web_ddg(consulta, max_results=6)
         for r in resultados_web:
             url = r["url"]
             if url in urls_vistas:

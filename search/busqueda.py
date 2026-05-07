@@ -290,7 +290,7 @@ def buscar_unificado(necesidad, usar_ia=True):
         from config import get_cliente
         if get_cliente():
             from search.ia_busqueda import buscar_empresas_con_ia
-            ia = buscar_empresas_con_ia(necesidad, max_resultados=8)
+            ia = buscar_empresas_con_ia(necesidad, max_resultados=12)
             if "error" not in ia:
                 for emp in ia.get("empresas", []):
                     nombre_ia = emp.get("nombre_empresa", "").lower().strip()
