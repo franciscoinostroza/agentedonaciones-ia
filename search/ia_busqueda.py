@@ -1,11 +1,7 @@
 import json
 import re
-import requests
 import sys
-import os
-from bs4 import BeautifulSoup
 from config import chat, get_cliente
-from database.empresas import EMPRESAS
 
 try:
     from ddgs import DDGS
@@ -73,87 +69,69 @@ def buscar_web_ddg(consulta, max_results=6):
     return resultados
 
 
-def extraer_contenido_pagina(url, timeout=5):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        resp = requests.get(url, headers=headers, timeout=timeout)
-        if resp.status_code != 200:
-            return ""
-        soup = BeautifulSoup(resp.text, "lxml")
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
-            tag.decompose()
-        texto = soup.get_text(separator=" ", strip=True)
-        texto = re.sub(r"\s+", " ", texto)
-        return texto[:4000]
-    except Exception:
-        return ""
+def analizar_snippets_con_ia(snippets, necesidad_original):
+    if not snippets:
+        return []
 
+    listado = "\n".join(
+        f"- [{s['titulo'][:100]}] {s['descripcion'][:200]}\n  URL: {s['url']}"
+        for s in snippets[:20]
+    )
 
-def analizar_con_ia(texto_pagina, necesidad_original, titulo="", url=""):
-    if not texto_pagina:
-        return None
+    prompt = f"""Sos experto en RSE argentina. Analizá estos resultados de busqueda web
+y extraé SOLO empresas argentinas que tengan programas de donacion.
 
-    prompt = f"""Analizá esta pagina web en busca de empresas argentinas que puedan donar.
+NECESIDAD del merendero IEA: {necesidad_original}
 
-NECESIDAD: {necesidad_original}
+RESULTADOS:
+{listado[:5000]}
 
-TITULO: {titulo}
-URL: {url}
+Extrae maximo 5 empresas. Si el resultado NO describe una empresa que done, ignorá.
+Si no encontrás ninguna empresa, respondé: NO_DONA
 
-CONTENIDO:
-{texto_pagina[:4000]}
-
-Si esta pagina MENCIONA empresas concretas que donan o tienen programas de RSE,
-extrae los datos de CADA empresa (maximo 3). Si no hay ninguna empresa concreta
-con programa de donaciones, respondé exactamente: NO_DONA
-
-Respondé SOLO en JSON como array de empresas:
+Respondé SOLO JSON array:
 [{{
-    "nombre_empresa": "Nombre real de la empresa",
-    "rubro": "Rubro principal",
+    "nombre_empresa": "nombre real",
+    "rubro": "rubro",
     "categoria": "construccion|tecnologia|educacion|alimentacion|general",
-    "contacto": "email de contacto si aparece",
+    "contacto": "email o contacto si aparece",
     "telefono": "telefono si aparece",
-    "web": "sitio web de la empresa",
-    "provincia": "Provincia o Nacional",
-    "tipo_donacion": ["tipo1", "tipo2"],
-    "notas": "resumen de que donan y como contactar (2 lineas)",
-    "match_score": numero 1-100 que tan bien se ajusta a la necesidad
+    "web": "url",
+    "provincia": "provincia",
+    "tipo_donacion": ["tipo1"],
+    "notas": "1-2 lineas sobre que donan",
+    "match_score": numero 1-100
 }}]"""
 
     resp = chat([
-        {"role": "system", "content": "Sos analista de RSE. Extrae empresas que donan de cualquier pagina. Si la pagina menciona empresas concretas con programas de donacion, extraelas. Solo JSON array o NO_DONA."},
+        {"role": "system", "content": "Extrae empresas argentinas con programas de donacion. Solo JSON array o NO_DONA."},
         {"role": "user", "content": prompt}
-    ], temperature=0.2, max_tokens=3000)
+    ], temperature=0.3, max_tokens=3000)
 
     if resp is None or "NO_DONA" in resp:
-        return None
+        return []
 
     try:
         json_match = re.search(r'\[.*\]', resp, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group())
-            if isinstance(data, list) and len(data) > 0:
-                return data[0]
-            elif isinstance(data, dict):
+            if isinstance(data, list):
                 return data
     except:
         pass
-    return None
+    return []
 
 
 def buscar_empresas_con_ia(necesidad, max_resultados=8):
     if not get_cliente():
-        return {"error": "API key de DeepSeek no configurada", "empresas": []}
+        return {"error": "API key no configurada", "empresas": []}
 
     print(_safe(f"\n  Analizando necesidad: '{necesidad}'..."))
 
     print("  Generando consultas de busqueda con IA...")
     consultas = generar_consultas_ia(necesidad)
 
-    todos_resultados = []
+    todos_snippets = []
     urls_vistas = set()
 
     for i, consulta in enumerate(consultas):
@@ -164,43 +142,28 @@ def buscar_empresas_con_ia(necesidad, max_resultados=8):
             if url in urls_vistas:
                 continue
             urls_vistas.add(url)
-            todos_resultados.append(r)
+            todos_snippets.append(r)
 
-    print(f"  Encontrados {len(todos_resultados)} links. Analizando con IA...")
+    print(f"  Encontrados {len(todos_snippets)} links. Analizando con IA...")
 
-    empresas_encontradas = []
-    for i, r in enumerate(todos_resultados[:max_resultados]):
-        titulo = _safe(r['titulo'][:60] if r.get('titulo') else 'Sin titulo')
-        print(f"  Analizando [{i+1}/{min(len(todos_resultados), max_resultados)}]: {titulo}...")
+    empresas = analizar_snippets_con_ia(todos_snippets, necesidad)
 
-        contenido = extraer_contenido_pagina(r["url"])
-        if not contenido:
-            continue
+    for emp in empresas:
+        emp.setdefault("categoria", "general")
+        emp.setdefault("contacto", "")
+        emp.setdefault("telefono", "")
+        emp.setdefault("provincia", "Argentina")
+        emp.setdefault("tipo_donacion", [])
+        emp.setdefault("notas", "")
+        emp.setdefault("match_score", 50)
+        emp["fuente"] = "IA"
 
-        analisis = analizar_con_ia(
-            contenido,
-            necesidad,
-            titulo=r["titulo"],
-            url=r["url"],
-        )
-
-        if analisis and isinstance(analisis, dict):
-            analisis.setdefault("categoria", "general")
-            analisis.setdefault("contacto", "")
-            analisis.setdefault("telefono", "")
-            analisis.setdefault("provincia", "Argentina")
-            analisis.setdefault("tipo_donacion", [])
-            analisis.setdefault("notas", "")
-            analisis.setdefault("match_score", 50)
-            analisis["fuente"] = "IA"
-            empresas_encontradas.append(analisis)
-
-    empresas_encontradas.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+    empresas.sort(key=lambda x: x.get("match_score", 0), reverse=True)
 
     return {
         "consultas_usadas": consultas,
-        "total_links": len(todos_resultados),
-        "empresas": empresas_encontradas,
+        "total_links": len(todos_snippets),
+        "empresas": empresas[:max_resultados],
     }
 
 
