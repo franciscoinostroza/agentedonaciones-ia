@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IEA — Agente de Donaciones</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23000000'/><text y='70' x='50' text-anchor='middle' font-size='40' font-weight='bold' fill='white' font-family='sans-serif'>IEA</text></svg>" />
+</head>
+<body>
+
+  <header>
+    <div class="header-bg"></div>
+    <div class="header-overlay"></div>
+    <div class="header-inner">
+      <div class="logo">
+        <img src="https://i.ibb.co/j968Bs5y/logo.png" class="logo-img" alt="IEA" />
+        <div>
+          <h1>Integrar Educar Amar — IEA</h1>
+          <p>Agente de Donaciones {% if ia_disponible %}· IA {{ ia_modelo }}{% endif %}</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="buscar">Buscar empresas</button>
+    <button class="tab-btn" data-tab="guardadas">Guardadas</button>
+    <button class="tab-btn" data-tab="historial">Historial</button>
+    <button class="tab-btn" data-tab="mis-emails">Mis emails</button>
+  </nav>
+
+  <main>
+
+    <!-- TAB: BUSCAR -->
+    <section id="tab-buscar" class="tab-content active">
+      <div class="card search-card">
+        <h2>¿Qué necesita el merendero?</h2>
+        <p class="hint">Ejemplos: materiales para baños, computadoras, libros, alimentos, muebles…</p>
+        <div class="search-row">
+          <input id="necesidad-input" type="text" placeholder="Escribí lo que necesitás..." />
+          <button id="btn-buscar" class="btn-primary">Buscar</button>
+        </div>
+        <div class="zona-label">Zona</div>
+        <div class="zona-chips" id="zona-chips">
+          {% for z in zonas %}
+          <button class="zona-chip {% if loop.first %}active{% endif %}" data-zona="{{ z }}">{{ z }}</button>
+          {% endfor %}
+        </div>
+        <div id="search-status" class="status hidden"></div>
+      </div>
+
+      <div id="resultados" class="resultados-grid"></div>
+
+      <div id="guardadas-section" class="hidden">
+        <div class="guardadas-header">
+          <h3 class="guardadas-titulo">Ya buscadas: <span id="guardadas-nicho-label"></span></h3>
+          <span id="guardadas-count" class="stat-chip"></span>
+        </div>
+        <div id="guardadas-grid" class="resultados-grid"></div>
+      </div>
+    </section>
+
+    <!-- TAB: GUARDADAS -->
+    <section id="tab-guardadas" class="tab-content">
+      <div class="card">
+        <div class="historial-header">
+          <h2>Empresas guardadas</h2>
+          <div id="guardadas-tab-stats" class="stats-row"></div>
+        </div>
+        <input id="guardadas-tab-filtro" type="text" placeholder="Filtrar por empresa, rubro o zona…" class="filtro-input" />
+      </div>
+      <div id="guardadas-tab-grid" class="resultados-grid"></div>
+      <p id="guardadas-tab-vacio" class="empty-msg hidden">Todavía no hay empresas guardadas. Buscá un rubro para empezar.</p>
+    </section>
+
+    <!-- TAB: HISTORIAL -->
+    <section id="tab-historial" class="tab-content">
+      <div class="card">
+        <div class="historial-header">
+          <h2>Historial de contactos</h2>
+          <div id="historial-stats" class="stats-row"></div>
+        </div>
+        <input id="historial-filtro" type="text" placeholder="Filtrar por empresa o nicho…" class="filtro-input" />
+        <div class="table-wrap">
+          <table id="tabla-historial">
+            <thead>
+              <tr><th>Empresa</th><th>Nicho</th><th>Email</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="historial-body"></tbody>
+          </table>
+        </div>
+        <p id="historial-vacio" class="empty-msg hidden">Todavía no hay contactos registrados.</p>
+      </div>
+    </section>
+
+    <!-- TAB: MIS EMAILS -->
+    <section id="tab-mis-emails" class="tab-content">
+      <div class="card">
+        <h2>Emails de referencia</h2>
+        <p class="hint">Pegá emails que ya enviaste para que el agente aprenda tu estilo y tono.</p>
+        <div class="form-group">
+          <input id="ref-titulo" type="text" placeholder="Título o empresa (opcional)" />
+          <textarea id="ref-contenido" rows="8" placeholder="Pegá el email completo acá…"></textarea>
+          <button id="btn-guardar-ref" class="btn-primary">Guardar email de referencia</button>
+        </div>
+      </div>
+      <div id="lista-refs" class="refs-list"></div>
+    </section>
+
+  </main>
+
+  <!-- MODAL -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <button class="modal-close" id="modal-close">X</button>
+      <h3 id="modal-empresa"></h3>
+      <label>Asunto</label>
+      <p id="modal-asunto" class="modal-asunto"></p>
+      <label>Cuerpo</label>
+      <pre id="modal-cuerpo" class="modal-cuerpo"></pre>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
