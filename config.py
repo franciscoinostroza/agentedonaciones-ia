@@ -1,4 +1,5 @@
 import os
+import time
 from openai import OpenAI
 
 _ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -12,7 +13,7 @@ if os.path.exists(_ENV_FILE):
 
 IA_API_KEY = os.environ.get("IA_API_KEY", "")
 IA_BASE_URL = os.environ.get("IA_BASE_URL", "https://opencode.ai/zen/v1")
-IA_MODEL = os.environ.get("IA_MODEL", "big-pickle")
+IA_MODEL = os.environ.get("IA_MODEL", "deepseek-v4-flash-free")
 
 _cliente = None
 
@@ -34,17 +35,27 @@ def set_api_key(key, base_url=None, model=None):
     _cliente = OpenAI(api_key=key, base_url=base_url or IA_BASE_URL)
 
 
+_CHAT_MAX_RETRIES = 2
+_CHAT_TIMEOUT = 30
+
+
 def chat(messages, model=None, temperature=0.3, max_tokens=8000):
     cliente = get_cliente()
     if not cliente:
         return None
-    try:
-        resp = cliente.chat.completions.create(
-            model=model or IA_MODEL,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return resp.choices[0].message.content
-    except Exception as e:
-        return f"[Error IA: {e}]"
+    last_error = None
+    for intento in range(_CHAT_MAX_RETRIES):
+        try:
+            resp = cliente.chat.completions.create(
+                model=model or IA_MODEL,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=_CHAT_TIMEOUT,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            if intento < _CHAT_MAX_RETRIES - 1:
+                time.sleep(1.5 ** intento)
+    return f"[Error IA: {last_error}]"

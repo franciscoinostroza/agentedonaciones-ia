@@ -101,11 +101,13 @@ def main():
         print(f"\n  Buscando '{entrada}' en BD local", end="")
         if IA_ACTIVA:
             print(" + web con IA...\n")
-            print("  (la IA está analizando páginas web, puede tardar ~1 minuto)\n")
         else:
             print("...\n")
 
-        resultados = buscar_unificado(entrada, usar_ia=IA_ACTIVA)
+        def _progreso(msg):
+            print(f"  {msg}")
+
+        resultados = buscar_unificado(entrada, usar_ia=IA_ACTIVA, on_progress=_progreso if IA_ACTIVA else None)
         mostrar_resultados(resultados)
 
         if resultados:
@@ -119,10 +121,9 @@ def main():
                 tel = input("    Teléfono: ").strip()
                 email = input("    Email: ").strip()
                 for emp in resultados:
-                    if "fuente" in emp or True:
-                        carta = generar_carta(emp, contacto_nombre=contacto, contacto_telefono=tel, contacto_email=email)
-                        ruta = guardar_carta(carta, emp.get("nombre", emp.get("nombre_empresa", "empresa")))
-                        print(f"    Carta: {ruta}")
+                    carta = generar_carta(emp, contacto_nombre=contacto, contacto_telefono=tel, contacto_email=email)
+                    ruta = guardar_carta(carta, emp["nombre"] or "empresa")
+                    print(f"    Carta: {ruta}")
 
         print()
 

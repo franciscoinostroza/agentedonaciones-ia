@@ -1,6 +1,9 @@
 import json
 import re
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from config import chat, get_cliente
 
 try:
@@ -18,7 +21,14 @@ def _safe(text):
         return str(text)
 
 
-def generar_consultas_ia(necesidad):
+def _progress(on_progress, mensaje):
+    if on_progress:
+        on_progress(mensaje)
+
+
+def generar_consultas_ia(necesidad, on_progress=None):
+    _progress(on_progress, "Generando consultas de busqueda con IA...")
+
     prompt = f"""Un merendero argentino (IEA) necesita: {necesidad}
 
 Genera exactamente 6 consultas de busqueda web para encontrar EMPRESAS ESPECIFICAS
@@ -41,7 +51,7 @@ Responde SOLO en JSON:
         consultas = data.get("consultas", [])
         if consultas:
             return consultas
-    except:
+    except (json.JSONDecodeError, TypeError, AttributeError):
         pass
 
     return [
@@ -54,19 +64,29 @@ Responde SOLO en JSON:
     ]
 
 
+def _buscar_web_ddg_intento(consulta, max_results=6, intentos=3):
+    for intento in range(intentos):
+        resultados = []
+        try:
+            with DDGS() as ddgs:
+                for r in ddgs.text(f"{consulta} Argentina", max_results=max_results):
+                    resultados.append({
+                        "titulo": r.get("title", ""),
+                        "url": r.get("href", ""),
+                        "descripcion": r.get("body", ""),
+                    })
+            return resultados
+        except Exception as e:
+            if intento < intentos - 1:
+                time.sleep(1.5 ** intento)
+            else:
+                print(f"  [!] DuckDuckGo error en '{consulta[:50]}...': {e}")
+                return []
+    return []
+
+
 def buscar_web_ddg(consulta, max_results=6):
-    resultados = []
-    try:
-        with DDGS() as ddgs:
-            for r in ddgs.text(f"{consulta} Argentina", max_results=max_results):
-                resultados.append({
-                    "titulo": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "descripcion": r.get("body", ""),
-                })
-    except Exception:
-        pass
-    return resultados
+    return _buscar_web_ddg_intento(consulta, max_results)
 
 
 def analizar_snippets_con_ia(snippets, necesidad_original):
@@ -78,18 +98,18 @@ def analizar_snippets_con_ia(snippets, necesidad_original):
         for s in snippets[:20]
     )
 
-    prompt = f"""Sos experto en RSE argentina. Analizá estos resultados de busqueda web
-y extraé SOLO empresas argentinas que tengan programas de donacion.
+    prompt = f"""Sos experto en RSE argentina. Analiza estos resultados de busqueda web
+y extrae SOLO empresas argentinas que tengan programas de donacion.
 
 NECESIDAD del merendero IEA: {necesidad_original}
 
 RESULTADOS:
 {listado[:5000]}
 
-Extrae maximo 5 empresas. Si el resultado NO describe una empresa que done, ignorá.
-Si no encontrás ninguna empresa, respondé: NO_DONA
+Extrae maximo 5 empresas. Si el resultado NO describe una empresa que done, ignora.
+Si no encontras ninguna empresa, responde: NO_DONA
 
-Respondé SOLO JSON array:
+Responde SOLO JSON array:
 [{{
     "nombre_empresa": "nombre real",
     "rubro": "rubro",
@@ -117,34 +137,39 @@ Respondé SOLO JSON array:
             data = json.loads(json_match.group())
             if isinstance(data, list):
                 return data
-    except:
+    except (json.JSONDecodeError, TypeError, AttributeError):
         pass
     return []
 
 
-def buscar_empresas_con_ia(necesidad, max_resultados=8):
+def buscar_empresas_con_ia(necesidad, max_resultados=8, on_progress=None):
     if not get_cliente():
         return {"error": "API key no configurada", "empresas": []}
 
-    print(_safe(f"\n  Analizando necesidad: '{necesidad}'..."))
+    _progress(on_progress, f"Analizando necesidad: '{necesidad}'...")
 
-    print("  Generando consultas de busqueda con IA...")
-    consultas = generar_consultas_ia(necesidad)
+    consultas = generar_consultas_ia(necesidad, on_progress=on_progress)
 
     todos_snippets = []
     urls_vistas = set()
 
-    for i, consulta in enumerate(consultas):
-        print(_safe(f"  Buscando en web [{i+1}/{len(consultas)}]: {consulta[:70]}..."))
-        resultados_web = buscar_web_ddg(consulta, max_results=6)
-        for r in resultados_web:
-            url = r["url"]
-            if url in urls_vistas:
-                continue
-            urls_vistas.add(url)
-            todos_snippets.append(r)
+    _progress(on_progress, f"Buscando en web ({len(consultas)} consultas en paralelo)...")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_buscar_web_ddg_intento, q): i for i, q in enumerate(consultas)}
+        for future in as_completed(futures):
+            i = futures[future]
+            try:
+                resultados_web = future.result()
+                for r in resultados_web:
+                    url = r["url"]
+                    if url in urls_vistas:
+                        continue
+                    urls_vistas.add(url)
+                    todos_snippets.append(r)
+            except Exception:
+                pass
 
-    print(f"  Encontrados {len(todos_snippets)} links. Analizando con IA...")
+    _progress(on_progress, f"Encontrados {len(todos_snippets)} links. Analizando con IA...")
 
     empresas = analizar_snippets_con_ia(todos_snippets, necesidad)
 
@@ -160,6 +185,8 @@ def buscar_empresas_con_ia(necesidad, max_resultados=8):
 
     empresas.sort(key=lambda x: x.get("match_score", 0), reverse=True)
 
+    _progress(on_progress, f"IA encontro {len(empresas[:max_resultados])} empresas.")
+
     return {
         "consultas_usadas": consultas,
         "total_links": len(todos_snippets),
@@ -168,23 +195,22 @@ def buscar_empresas_con_ia(necesidad, max_resultados=8):
 
 
 def analizar_necesidad_completa_ia(necesidad):
-    """Usa IA para entender la necesidad y devolver recomendaciones completas"""
     prompt = f"""Sos un asesor experto en fundraising para un merendero comunitario argentino llamado IEA.
 
 El merendero necesita: {necesidad}
 
-Analizá esta necesidad y respondé con un JSON con esta estructura exacta:
+Analiza esta necesidad y responde con un JSON con esta estructura exacta:
 {{
     "categorias_relevantes": ["categoria1", "categoria2"],
     "palabras_clave_utiles": ["kw1", "kw2", "kw3"],
     "tipos_empresa_sugeridos": ["tipo1", "tipo2"],
-    "estrategia_recomendada": "Estrategia de 2-3 oraciones sobre cómo encarar el pedido",
+    "estrategia_recomendada": "Estrategia de 2-3 oraciones sobre como encarar el pedido",
     "prioridad": "alta|media|baja",
     "consejos": ["consejo1", "consejo2"]
 }}"""
 
     resp = chat([
-        {"role": "system", "content": "Sos experto en fundraising para ONGs argentinas. Respondé solo JSON valido."},
+        {"role": "system", "content": "Sos experto en fundraising para ONGs argentinas. Responde solo JSON valido."},
         {"role": "user", "content": prompt}
     ], temperature=0.3, max_tokens=600)
 

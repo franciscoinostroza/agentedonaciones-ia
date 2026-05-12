@@ -14,12 +14,12 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    zonas = ["GBA / Conurbano Bonaerense", "CABA", "Córdoba", "Rosario", "Mendoza", "Mar del Plata", "Argentina (nacional)"]
+    zonas = ["GBA / Conurbano Bonaerense", "CABA", "C\u00f3rdoba", "Rosario", "Mendoza", "Mar del Plata", "Argentina (nacional)"]
     ia_disponible = get_cliente() is not None
     return render_template("index.html", zonas=zonas, ia_disponible=ia_disponible, ia_modelo=IA_MODEL)
 
 
-# ─── BUSCAR ────────────────────────────────────────────────────
+# \u2500\u2500\u2500 BUSCAR \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/buscar", methods=["POST"])
 def buscar():
@@ -28,25 +28,16 @@ def buscar():
     zona = data.get("zona", "Argentina (nacional)")
 
     if not necesidad:
-        return jsonify({"error": "Describí qué necesitás"}), 400
+        return jsonify({"error": "Describ\u00ed qu\u00e9 necesit\u00e1s"}), 400
 
-    # 1. Resultados locales (instantáneos)
-    from search.busqueda import buscar_empresas_por_necesidad, buscar_empresas_local
-    locales = buscar_empresas_por_necesidad(necesidad)
-    for emp in locales:
-        emp["match_score"] = 90
-        emp["fuente"] = "BD Local"
-
+    resultados = buscar_unificado(necesidad, usar_ia=False, solo_ia=False, incluir_guardadas=True)
     guardadas_previas = db.get_empresas_guardadas(necesidad, zona)
-    nombres_previos = {e["nombre"] for e in guardadas_previas}
-
-    formato = _formatear_empresas(locales)
 
     return jsonify({
-        "resultados": formato,
+        "resultados": _formatear_empresas(resultados),
         "guardadasPrevias": guardadas_previas,
         "zona": zona,
-        "total": len(formato),
+        "total": len(resultados),
         "total_guardadas": len(guardadas_previas),
         "ia_pendiente": get_cliente() is not None,
     })
@@ -54,7 +45,6 @@ def buscar():
 
 @app.route("/api/buscar-ia", methods=["POST"])
 def buscar_ia():
-    """Endpoint separado para búsqueda IA (más lento, para llamar después)"""
     data = request.get_json()
     necesidad = data.get("necesidad", "").strip()
 
@@ -62,26 +52,8 @@ def buscar_ia():
         return jsonify({"empresas": []})
 
     try:
-        from search.ia_busqueda import buscar_empresas_con_ia
-        resultado = buscar_empresas_con_ia(necesidad, max_resultados=12)
-        empresas = resultado.get("empresas", []) if "error" not in resultado else []
-
-        formato = []
-        for emp in empresas:
-            donan = emp.get("tipo_donacion", [])
-            formato.append({
-                "nombre": emp.get("nombre_empresa", emp.get("nombre", "")),
-                "sitio_web": emp.get("web", ""),
-                "email": emp.get("contacto", ""),
-                "tiene_rse": 1,
-                "categoria": emp.get("categoria", "general"),
-                "donan": ", ".join(donan) if isinstance(donan, list) else str(donan),
-                "notas": emp.get("notas", ""),
-                "match_score": emp.get("match_score", 50),
-                "fuente": "IA",
-                "telefono": emp.get("telefono", ""),
-            })
-        return jsonify({"empresas": formato, "total": len(formato)})
+        resultados = buscar_unificado(necesidad, usar_ia=True, solo_ia=True, incluir_guardadas=False)
+        return jsonify({"empresas": _formatear_empresas(resultados), "total": len(resultados)})
     except Exception as e:
         return jsonify({"empresas": [], "error": str(e)})
 
@@ -91,22 +63,22 @@ def _formatear_empresas(lista):
     for r in lista:
         donan = r.get("tipo_donacion", [])
         limpios.append({
-            "nombre": r.get("nombre", r.get("nombre_empresa", "")),
-            "sitio_web": r.get("web", r.get("sitio_web", "")),
-            "email": r.get("contacto", ""),
+            "nombre": r["nombre"],
+            "sitio_web": r["web"],
+            "email": r["contacto"],
             "tiene_rse": 1,
-            "categoria": r.get("categoria", ""),
+            "categoria": r["categoria"],
             "donan": ", ".join(donan) if isinstance(donan, list) else str(donan),
-            "notas": r.get("notas", ""),
-            "match_score": r.get("match_score", 0),
-            "fuente": r.get("fuente", ""),
-            "telefono": r.get("telefono", ""),
-            "provincia": r.get("provincia", ""),
+            "notas": r["notas"],
+            "match_score": r["match_score"],
+            "fuente": r["fuente"],
+            "telefono": r["telefono"],
+            "provincia": r["provincia"],
         })
     return limpios
 
 
-# ─── GENERAR EMAIL ─────────────────────────────────────────────
+# \u2500\u2500\u2500 GENERAR EMAIL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/generar-email", methods=["POST"])
 def generar_email():
@@ -122,25 +94,25 @@ def generar_email():
     donan = empresa.get("donan", empresa.get("tipo_donacion", ""))
     sitio = empresa.get("sitio_web", empresa.get("web", ""))
 
-    prompt = f"""Sos asistente de la Asociación Civil Integrar Educar Amar (IEA), una ONG que brinda
-apoyo escolar y merienda diaria a 50 niños en situación de vulnerabilidad en Argentina.
+    prompt = f"""Sos asistente de la Asociaci\u00f3n Civil Integrar Educar Amar (IEA), una ONG que brinda
+apoyo escolar y merienda diaria a 50 ni\u00f1os en situaci\u00f3n de vulnerabilidad en Argentina.
 
 Empresa a contactar:
 - Nombre: {nombre}
 - Rubro: {necesidad}
 - Sitio web: {sitio}
-- Tipo de donación que ofrece: {donan}
+- Tipo de donaci\u00f3n que ofrece: {donan}
 
-Generá:
-1. Una "idea de referencia" (2-3 oraciones): por qué esta empresa podría donar, qué pedirle
-2. Un email de solicitud de donación que:
+Gener\u00e1:
+1. Una "idea de referencia" (2-3 oraciones): por qu\u00e9 esta empresa podr\u00eda donar, qu\u00e9 pedirle
+2. Un email de solicitud de donaci\u00f3n que:
    - Conecte el rubro con lo que necesita IEA
-   - Use español rioplatense, emotivo pero profesional
+   - Use espa\u00f1ol rioplatense, emotivo pero profesional
    - Mencione logros concretos
-   - Cierre con llamado a la acción
-   - Firme: Asociación Civil Integrar Educar Amar | abigailntevez@gmail.com
+   - Cierre con llamado a la acci\u00f3n
+   - Firme: Asociaci\u00f3n Civil Integrar Educar Amar | abigailntevez@gmail.com
 
-Devolvé ÚNICAMENTE JSON:
+Devolv\u00e9 \u00daNICAMENTE JSON:
 {{"idea_referencia": "...", "asunto": "...", "cuerpo": "..."}}"""
 
     resp = chat([
@@ -169,7 +141,7 @@ Devolvé ÚNICAMENTE JSON:
     })
 
 
-# ─── EMPRESAS GUARDADAS ────────────────────────────────────────
+# \u2500\u2500\u2500 EMPRESAS GUARDADAS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/empresas-guardadas", methods=["GET", "POST"])
 def empresas_guardadas():
@@ -188,7 +160,7 @@ def eliminar_empresa_guardada(id):
     return jsonify({"ok": True})
 
 
-# ─── HISTORIAL ─────────────────────────────────────────────────
+# \u2500\u2500\u2500 HISTORIAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/historial", methods=["GET", "POST", "PATCH"])
 def historial_handler():
@@ -199,7 +171,6 @@ def historial_handler():
         rid = db.add_historial(data)
         return jsonify({"id": rid})
     if request.method == "PATCH":
-        # Usamos query param para el id
         return jsonify({"ok": True})
 
 
@@ -214,7 +185,7 @@ def historial_item(id):
         return jsonify({"ok": True})
 
 
-# ─── EMAILS DE REFERENCIA ──────────────────────────────────────
+# \u2500\u2500\u2500 EMAILS DE REFERENCIA \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/emails-referencia", methods=["GET", "POST"])
 def emails_referencia():
@@ -232,7 +203,7 @@ def eliminar_email_referencia(id):
     return jsonify({"ok": True})
 
 
-# ─── IA STATUS ────────────────────────────────────────────────
+# \u2500\u2500\u2500 IA STATUS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 @app.route("/api/ia-status")
 def ia_status():
